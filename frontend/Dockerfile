@@ -1,10 +1,13 @@
-# NOTE: pinned to intentionally old base images (node:18.0.0, nginx:1.21.0)
-# plus an outdated axios dependency (0.21.1) so this image carries real,
-# known CVEs for security-tool testing purposes. Do not use this Dockerfile
-# as a template for production images.
+# NOTE: the *runtime* image is intentionally old (nginx:1.21.0) and ships an
+# outdated axios dependency (0.21.1) in the built JS bundle, so this image
+# carries real, known CVEs for security-tool testing purposes. The builder
+# stage below is not part of the shipped image (only its /app/dist output is
+# copied out), so it uses a current Node to actually be able to run the
+# build - Vite 6 requires a newer Node than node:18.0.0 provides.
+# Do not use this Dockerfile as a template for production images.
 
 # ---- Build stage ----
-FROM node:18.0.0 AS builder
+FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./

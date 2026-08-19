@@ -69,14 +69,22 @@ This repo intentionally pins some old, vulnerable dependencies and base images s
 used as a fixture for testing security scanners (e.g. Aikido's CVE exploitability / container
 reachability analysis). **Do not reuse these Dockerfiles or dependency pins for anything real.**
 
-| Location | Package/Image | Version | Known issue | Reachable at runtime? |
+| Location | Package/Image | Version | Known issues (verified via `npm audit`) | Reachable at runtime? |
 |---|---|---|---|---|
-| `backend` | `lodash` | 4.17.15 | Prototype pollution / command injection (CVE-2020-8203, CVE-2021-23337; fixed in 4.17.19 / 4.17.21) | **Yes** — `routes/cart.ts` calls `merge({}, defaults, req.body.customization)` with unvalidated client input on `POST /api/cart`. |
-| `backend` | `axios` | 0.21.1 | ReDoS (CVE-2021-3749; fixed in 0.21.2) | **Yes** — `routes/imageProxy.ts` uses it on every request to `GET /api/image-proxy`, which also forwards a fully attacker-controlled URL server-side (SSRF), since it isn't allowlisted and axios 0.x follows redirects by default. |
-| `backend` (devDependency) | `minimist` | 1.2.5 | Prototype pollution (CVE-2021-44906; fixed in 1.2.6) | **No** — pinned as a direct devDependency but never imported by app code; not present in the runtime image's execution path. |
-| `frontend` | `axios` | 0.21.1 | Same as above (CVE-2021-3749) | **Yes** — used for every API call in `src/api.ts`, shipped in the built JS bundle served by nginx. |
-| `backend`, `frontend` (build stage) | `node` base image | `18.0.0` | Multiple OS-level CVEs (Debian package versions frozen at Apr 2022) | Yes, image-level (OS packages present in the running container). |
-| `frontend` (serve stage) | `nginx` base image | `1.21.0` | Multiple OS-level CVEs (Debian package versions frozen at May 2021) | Yes, image-level. |
+| `backend` | `lodash` | 4.17.15 | High severity — command injection ([GHSA-35jh-r3h4-6jhm](https://github.com/advisories/GHSA-35jh-r3h4-6jhm)), prototype pollution ([GHSA-p6mc-m468-83gw](https://github.com/advisories/GHSA-p6mc-m468-83gw), [GHSA-xxjr-mmjv-4gpg](https://github.com/advisories/GHSA-xxjr-mmjv-4gpg)), ReDoS ([GHSA-29mw-wpgm-hmr9](https://github.com/advisories/GHSA-29mw-wpgm-hmr9)) | **Yes** — `routes/cart.ts` calls `merge({}, defaults, req.body.customization)` with unvalidated client input on `POST /api/cart`. |
+| `backend` | `axios` | 0.21.1 | High severity — prototype pollution affecting request construction ([GHSA-mmx7-hfxf-jppx](https://github.com/advisories/GHSA-mmx7-hfxf-jppx), [GHSA-7q8q-rj6j-mhjq](https://github.com/advisories/GHSA-7q8q-rj6j-mhjq)), NO_PROXY bypass ([GHSA-pjwm-pj3p-43mv](https://github.com/advisories/GHSA-pjwm-pj3p-43mv)) | **Yes** — `routes/imageProxy.ts` calls `axios.get(url)` on every request to `GET /api/image-proxy`, where `url` is a fully attacker-controlled, non-allowlisted query param — an SSRF sink independent of the axios CVEs, made worse by them. |
+| `backend` (devDependency) | `minimist` | 1.2.5 | Critical severity — prototype pollution ([GHSA-xvch-5gv4-984h](https://github.com/advisories/GHSA-xvch-5gv4-984h)) | **No** — pinned as a direct devDependency but never imported by app code; not present in the runtime image's execution path. |
+| `frontend` | `axios` | 0.21.1 | Same package, more advisories apply in this tree — adds Proxy-Authorization credential leaks on redirect ([GHSA-p92q-9vqr-4j8v](https://github.com/advisories/GHSA-p92q-9vqr-4j8v), [GHSA-j5f8-grm9-p9fc](https://github.com/advisories/GHSA-j5f8-grm9-p9fc)) and cookie-based ReDoS ([GHSA-hfxv-24rg-xrqf](https://github.com/advisories/GHSA-hfxv-24rg-xrqf)) | **Yes** — used for every API call in `src/api.ts`, shipped in the built JS bundle served by nginx. |
+| `frontend` (incidental, not pinned old on purpose) | `react-router-dom` | ^6.28.0 | Moderate — open redirect and SSR hydration issues ([GHSA-wrjc-x8rr-h8h6](https://github.com/advisories/GHSA-wrjc-x8rr-h8h6), [GHSA-337j-9hxr-rhxg](https://github.com/advisories/GHSA-337j-9hxr-rhxg)) | Present in the shipped bundle; surfaced by `npm install` picking up a current-but-still-flagged range. Left as-is since it's real signal, not manufactured. |
+| `backend` (build + runtime stage) | `node` base image | `18.0.0` | Multiple OS-level CVEs (Debian package versions frozen at Apr 2022) | Yes, image-level (this is the image that actually runs). |
+| `frontend` (serve stage) | `nginx` base image | `1.21.0` | Multiple OS-level CVEs (Debian package versions frozen at May 2021) | Yes, image-level (this is the image that actually runs). |
+
+Note: the frontend's build stage uses a current `node:20-alpine` — it never ships (only its
+`/app/dist` output is copied into the nginx image), and Vite 6 doesn't run on `node:18.0.0`
+anyway, so pinning it old would add no real CVE surface while breaking the build.
+
+All of the above was verified locally with `npm audit` in both `backend/` and `frontend/` right
+after `npm install` — re-run it there to get current advisory data for your own scan comparison.
 
 To reset for normal development, bump these to current versions and swap the base images for
 `node:lts` / `nginx:stable` (or alpine variants).
